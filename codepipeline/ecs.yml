@@ -90,50 +90,6 @@ Resources:
          - Type: binpack
            Field: cpu
 
-  ScalableTarget:
-    Type: AWS::ApplicationAutoScaling::ScalableTarget
-    DependsOn: serviceECSService
-    Properties:
-      MaxCapacity: !Ref ScalableTargetMax
-      MinCapacity: !Ref EcsTasksNumber
-      ResourceId: !Sub service/${ClusterName}-${Stage}/${serviceECSService.Name}
-      RoleARN:
-        "Fn::ImportValue": !Sub ${ClusterName}-${Stage}-ECSRoleArn
-      ScalableDimension: ecs:service:DesiredCount
-      ServiceNamespace: ecs
-
-  ScalingPolicyUp:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: !Sub ${ClusterName}_${Stage}_ScalingPolicyUp
-      PolicyType: StepScaling
-      ScalingTargetId: !Ref ScalableTarget
-      ScalableDimension: ecs:service:DesiredCount
-      ServiceNamespace: ecs
-      StepScalingPolicyConfiguration:
-        AdjustmentType: ChangeInCapacity
-        Cooldown: 300
-        MetricAggregationType: Maximum
-        StepAdjustments:
-          - MetricIntervalLowerBound: 0
-            ScalingAdjustment: 1
-
-  ScalingPolicyDown:
-    Type: AWS::ApplicationAutoScaling::ScalingPolicy
-    Properties:
-      PolicyName: !Sub ${ClusterName}_${Stage}_ScalingPolicyDown
-      PolicyType: StepScaling
-      ScalingTargetId: !Ref ScalableTarget
-      ScalableDimension: ecs:service:DesiredCount
-      ServiceNamespace: ecs
-      StepScalingPolicyConfiguration:
-        AdjustmentType: ChangeInCapacity
-        Cooldown: 300
-        MetricAggregationType: Maximum
-        StepAdjustments:
-          - MetricIntervalUpperBound: 0
-            ScalingAdjustment: -1
-
   servicetaskdefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
