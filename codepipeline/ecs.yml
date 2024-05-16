@@ -1,0 +1,189 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Sets Up Service Api
+Parameters:
+  ClusterName:
+    Type: String
+
+  Stage:
+    Type: String
+
+  TypeProject:
+    Type: String
+
+  ContainerPort:
+    Type: Number
+
+  ContainerVirtualCPUs:
+    Type: Number
+
+  ContainerMemoryMin:
+    Type: Number
+
+  ContainerMemoryMax:
+    Type: String
+
+  AlbHealthCheckStartPeriod:
+    Type: String
+
+  ContainerNetworkMode:
+    Type: String
+    Default: bridge
+
+  BuildNumber:
+    Type: String
+    Default: latest
+
+  EcsTasksNumber:
+    Type: String
+    Default: 1
+
+  ScalableTargetMax:
+    Description: Max of Scalable Tasks
+    Type: Number
+    Default: 4
+
+  CapacityProviderBase:
+    Type: String
+    Default: 0
+
+  CapacityProviderWeight:
+    Type: String
+    Default: 1
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Capacity Resources
+      Parameters:
+        - CapacityProviderBase
+        - CapacityProviderWeight
+
+Conditions:
+  containerHasMemoryLimit: !Not [!Equals [!Ref ContainerMemoryMax, "LIMITLESS"]]
+  hasOnlyOneTask: !Equals [!Ref EcsTasksNumber, "1"]
+
+Resources:
+  serviceECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      CapacityProviderStrategy:
+        - CapacityProvider: !Sub ${ClusterName}-${Stage}-CapacityProvider
+          Base: !Ref CapacityProviderBase
+          Weight: !Ref CapacityProviderWeight
+      Cluster:
+        'Fn::ImportValue': !Sub ${ClusterName}-${Stage}-ECSCluster
+      Role:
+        'Fn::ImportValue': !Sub ${ClusterName}-${Stage}-ECSRoleArn
+      TaskDefinition: !Ref servicetaskdefinition
+      DesiredCount: !Ref EcsTasksNumber
+      DeploymentConfiguration:
+        MinimumHealthyPercent: !If [hasOnlyOneTask, 100, 50]
+        MaximumPercent: !If [hasOnlyOneTask, 200, 100]
+      LoadBalancers:
+        - ContainerName: !Sub Application__${ClusterName}_${Stage}_${TypeProject}
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn:
+            'Fn::ImportValue': !Sub ${ClusterName}-${Stage}-${TypeProject}-tg
+      HealthCheckGracePeriodSeconds: !Ref AlbHealthCheckStartPeriod
+      PlacementConstraints:
+        - Type: memberOf
+          Expression: "attribute:cluster_type == web"
+        - Fn::If:
+            - hasOnlyOneTask
+            - !Ref "AWS::NoValue"
+            - Type: distinctInstance
+      PlacementStrategies:
+         - Type: binpack
+           Field: cpu
+
+  ScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    DependsOn: serviceECSService
+    Properties:
+      MaxCapacity: !Ref ScalableTargetMax
+      MinCapacity: !Ref EcsTasksNumber
+      ResourceId: !Sub service/${ClusterName}-${Stage}/${serviceECSService.Name}
+      RoleARN:
+        "Fn::ImportValue": !Sub ${ClusterName}-${Stage}-ECSRoleArn
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  ScalingPolicyUp:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${ClusterName}_${Stage}_ScalingPolicyUp
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScalableTarget
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+      StepScalingPolicyConfiguration:
+        AdjustmentType: ChangeInCapacity
+        Cooldown: 300
+        MetricAggregationType: Maximum
+        StepAdjustments:
+          - MetricIntervalLowerBound: 0
+            ScalingAdjustment: 1
+
+  ScalingPolicyDown:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub ${ClusterName}_${Stage}_ScalingPolicyDown
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref ScalableTarget
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+      StepScalingPolicyConfiguration:
+        AdjustmentType: ChangeInCapacity
+        Cooldown: 300
+        MetricAggregationType: Maximum
+        StepAdjustments:
+          - MetricIntervalUpperBound: 0
+            ScalingAdjustment: -1
+
+  servicetaskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${ClusterName}
+      NetworkMode: !Ref ContainerNetworkMode
+      ContainerDefinitions:
+        - Name: !Sub Application__${ClusterName}_${Stage}_${TypeProject}
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ClusterName}-${Stage}-${TypeProject}:${BuildNumber}
+          PortMappings:
+            - HostPort: 0
+              ContainerPort: !Ref ContainerPort
+          Command:
+            - sh
+            - -c
+            - "npm start"
+          Essential: true
+          MemoryReservation: !Ref ContainerMemoryMin
+          Memory: !If [containerHasMemoryLimit, !Ref ContainerMemoryMax, !Ref 'AWS::NoValue']
+          Cpu: !Ref ContainerVirtualCPUs
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub /ecs-cluster/${ClusterName}-${Stage}
+              awslogs-stream-prefix: /ecs-task-output
+              awslogs-region: !Ref AWS::Region
+          # Environment:
+          #   - Name: FE_URL
+          #     Value: !Sub "{{resolve:ssm:/${ClusterName}/${Stage}/${TypeProject}/FE_URL:1}}"
+
+          ReadonlyRootFilesystem: true
+
+Outputs:
+  ScalingPolicyUp:
+    Value: !Ref ScalingPolicyUp
+    Export:
+      Name: !Sub ${ClusterName}-${Stage}-${TypeProject}ScalingPolicyUp
+
+  ScalingPolicyDown:
+    Value: !Ref ScalingPolicyDown
+    Export:
+      Name: !Sub ${ClusterName}-${Stage}-${TypeProject}ScalingPolicyDown
+
+  serviceECSService:
+    Value: !GetAtt serviceECSService.Name
+    Export:
+      Name: !Sub ${ClusterName}-${Stage}-${TypeProject}serviceECSService
