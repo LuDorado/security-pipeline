@@ -68,10 +68,7 @@ Resources:
         - CapacityProvider: !Sub ${ClusterName}-${Stage}-CapacityProvider
           Base: !Ref CapacityProviderBase
           Weight: !Ref CapacityProviderWeight
-      Cluster:
-        'Fn::ImportValue': !Sub ${ClusterName}-${Stage}-ECSCluster
-      Role:
-        'Fn::ImportValue': !Sub ${ClusterName}-${Stage}-ECSRoleArn
+      Cluster: arn:aws:ecs:us-west-2:730335655271:cluster/meetup-demo
       TaskDefinition: !Ref servicetaskdefinition
       DesiredCount: !Ref EcsTasksNumber
       DeploymentConfiguration:
