@@ -64,31 +64,15 @@ Resources:
   serviceECSService:
     Type: AWS::ECS::Service
     Properties:
-      CapacityProviderStrategy:
-        - CapacityProvider: !Sub ${ClusterName}-${Stage}-CapacityProvider
-          Base: !Ref CapacityProviderBase
-          Weight: !Ref CapacityProviderWeight
       Cluster: arn:aws:ecs:us-west-2:730335655271:cluster/meetup-demo
       TaskDefinition: !Ref servicetaskdefinition
       DesiredCount: !Ref EcsTasksNumber
-      DeploymentConfiguration:
-        MinimumHealthyPercent: !If [hasOnlyOneTask, 100, 50]
-        MaximumPercent: !If [hasOnlyOneTask, 200, 100]
+
       LoadBalancers:
         - ContainerName: !Sub Application__${ClusterName}_${Stage}
           ContainerPort: !Ref ContainerPort
           TargetGroupArn: arn:aws:elasticloadbalancing:us-west-2:730335655271:targetgroup/tf-20240516173424468000000002/cce8744c79338b57
       HealthCheckGracePeriodSeconds: !Ref AlbHealthCheckStartPeriod
-      PlacementConstraints:
-        - Type: memberOf
-          Expression: "attribute:cluster_type == web"
-        - Fn::If:
-            - hasOnlyOneTask
-            - !Ref "AWS::NoValue"
-            - Type: distinctInstance
-      PlacementStrategies:
-         - Type: binpack
-           Field: cpu
 
   servicetaskdefinition:
     Type: AWS::ECS::TaskDefinition
@@ -97,7 +81,7 @@ Resources:
       NetworkMode: !Ref ContainerNetworkMode
       ContainerDefinitions:
         - Name: !Sub Application__${ClusterName}_${Stage}
-          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ClusterName}-${Stage}:${BuildNumber}
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/meetup-demo:${BuildNumber}
           PortMappings:
             - HostPort: 0
               ContainerPort: !Ref ContainerPort
