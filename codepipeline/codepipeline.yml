@@ -11,7 +11,7 @@ Parameters:
   ProviderBranch:
     Description: CodeCommit branch name
     Type: String
-    Default: main
+    Default: codepipeline_setup
 
   ConnectionArn:
     Description: "ARN of a pre-existen connection set up, if exists"
@@ -20,14 +20,18 @@ Parameters:
 
   Owner:
     Type: String
-    Default: keylimeinteractive
+    Default: LuDorado
 
-  Environment:
+  Stage:
       Description: Elastic beanstalk environment name
       Type: String
 
 ######## Cluster parameters ########
   ClusterName:
+    Type: String
+    Default: demo-meetup
+  
+  ECRRepository:
     Type: String
     Default: demo-meetup
 
@@ -63,48 +67,60 @@ Parameters:
 
 ######## ssm parameters ########
   SonarQubeScanToken: #meetup-demo-token: sqp_6eac36802bf3c509f23f4a6e763dce6223a10615
-      Description: Sonarqube scanning token
-      Type: String
-      NoEcho: true
+    Description: Sonarqube scanning token
+    Type: String
+    NoEcho: true
   
-    SonarQubeURLName:
-      Description: SonarQube SAST tool URL
-      Type: String
+  SonarQubeURLName:
+    Description: SonarQube SAST tool URL
+    Type: String
 
-    LambdaPackageLoc:
-      Description: S3 loc of lambda package
-      Type: String
-    LambdaPackageS3Key:
-      Description: S3 Key for Lambda package object
-      Type: String
-      Default: import_findings_security_hub.zip
+  LambdaPackageLoc:
+    Description: S3 loc of lambda package
+    Type: String
+  LambdaPackageS3Key:
+    Description: S3 Key for Lambda package object
+    Type: String
+    Default: import_findings_security_hub.zip
 
-    LambdaHandlerName:
-      Description: Name of the lambda handler
-      Type: String
-      Default: import_findings_security_hub.lambda_handler
+  LambdaHandlerName:
+    Description: Name of the lambda handler
+    Type: String
+    Default: import_findings_security_hub.lambda_handler
 
-    OwaspZapURLName:
-      Description: OWASP Zap DAST Tool URL
-      Type: String
+  OwaspZapURLName:
+    Description: OWASP Zap DAST Tool URL
+    Type: String
 
-    ApplicationURLForDASTScan:
-      Description: Application URL to run the DAST/Pen testing 
-      Type: String
+  ApplicationURLForDASTScan:
+    Description: Application URL to run the DAST/Pen testing 
+    Type: String
 
-    OwaspZapApiKey:
-      Description: OWASP Zap ApiKey
-      Type: String
-      NoEcho: true
+  OwaspZapApiKey:
+    Description: OWASP Zap ApiKey
+    Type: String
+    NoEcho: true
 
-    PipelineNotificationsEmail:
-      Description: Email address to receive SNS notifications for pipelineChanges
-      Type: String
+  PipelineNotificationsEmail:
+    Description: Email address to receive SNS notifications for pipelineChanges
+    Type: String
 
-    PipelineApproverEmail:
-      Description: Email address to send approval notifications
-      Type: String
+  PipelineApproverEmail:
+    Description: Email address to send approval notifications
+    Type: String
   
+  EcsTasksNumber:
+    Type: String
+    Default: 1
+  
+  DefaultAcmCertificateArn:
+    Type: String
+    Default: ""
+  
+  Port:
+    Type: String
+    Default: 3000
+    
   ECSConatinerInsgtEnabled: 
     Description: If ECS Container Insight is enabled or not
     Type: String
@@ -128,31 +144,60 @@ Metadata:
         - ClusterName
         - Stage
 
-    - Label:
-        default: SSM Params
-      Parameters:
-        - FeURL
-        - Host
-        - JtBeURL
-        - JwtSecret
-        - MongoDb
-        - NodeEnv
-        - OAuthGoogleKey
-        - OAuthGoogleSecret
-        - Port
-        - RedirectURL
-        - SmtpPass
-        - StatusIoId
-        - StatusIoKey
-        - StatusIoSyncSubscribers
-        - HubSpotApiKey
-
 Conditions:
   CreateProdResources: !Equals 
     - !Ref Stage
     - prod
 
 Resources:
+  CloudFormationExecutionRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Retain
+    Properties:
+      RoleName: !Sub cfn-${AWS::StackName}-${Stage}-role
+      Path: /
+      AssumeRolePolicyDocument: |
+        {
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": { "Service": [ "cloudformation.amazonaws.com" ]},
+            "Action": [ "sts:AssumeRole" ]
+          }]
+        }
+      Policies:
+        - PolicyName: cloudformation-role
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - autoscaling:*
+                  - cloudwatch:*
+                  - ec2:*
+                  - ecs:*
+                  - elasticloadbalancing:*
+                  - events:*
+                  - iam:*
+                  - ssm:*
+                  - logs:CreateLogGroup
+                  - logs:DeleteLogGroup
+                  - logs:PutRetentionPolicy
+                  - route53:*
+                  - secretsmanager:*
+                  - elasticache:*
+                  - rds:*
+                  - wafv2:*
+                  - globalaccelerator:*
+                  - s3:*
+                  - application-autoscaling:DescribeScalableTargets
+                  - application-autoscaling:RegisterScalableTarget
+                  - application-autoscaling:DescribeScalingPolicies
+                  - application-autoscaling:DeregisterScalableTarget
+                  - application-autoscaling:PutScalingPolicy
+                  - application-autoscaling:DescribeScalingActivities
+                  - application-autoscaling:DeleteScalingPolicy
+                  - logs:CreateLogDelivery
 
   CodeBuildServiceRole:
     Type: AWS::IAM::Role
@@ -197,7 +242,7 @@ Resources:
           }]
         }
       Policies:
-        - PolicyName: root
+        - PolicyName: codepipeline-role
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -216,6 +261,7 @@ Resources:
                   - codestar-connections:UseConnection
 
   CodeBuildProject:
+    DependsOn: CodeBuildServiceRole
     Type: AWS::CodeBuild::Project
     Properties:
       Name: !Ref AWS::StackName
@@ -238,6 +284,7 @@ Resources:
           phases:
             install:
               commands:
+                - n install 20
                 - node --version
                 - echo Logging in to Amazon ECR... #
                 - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $REPOSITORY_URI
@@ -249,7 +296,7 @@ Resources:
               commands:
                 - npm -v
                 - node -v
-                - docker build -t $REPOSITORY_NAME --build-arg DOCKER_SUITE=${DOCKER_SUITE} -f Dockerfile.devops .
+                - docker build -t $REPOSITORY_NAME .
             post_build:
               commands:
                 - docker tag $REPOSITORY_NAME:latest $REPOSITORY_URI/$REPOSITORY_NAME:$IMAGE_TAG
@@ -265,12 +312,12 @@ Resources:
           - Name: REPOSITORY_URI
             Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
           - Name: REPOSITORY_NAME
-            Value: !Ref Repository
+            Value: !Ref ECRRepository
 
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
-      Name: !Sub ${ClusterName}-${Stage}-${TypeProject}-service
+      Name: !Sub ${ClusterName}-${Stage}--service
       RoleArn: !GetAtt CodePipelineServiceRole.Arn
       ArtifactStore:
         Type: S3
@@ -310,47 +357,44 @@ Resources:
                 - Name: BuildOutput
               RunOrder: 1
 
-            - Name: CreateELBChangeSet
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Version: '1'
-                Provider: CloudFormation
-              Configuration:
-                ChangeSetName: Deploy
-                ActionMode: CHANGE_SET_REPLACE
-                StackName: !Sub ${ClusterName}-${Stage}-${TypeProject}-service-elb
-                Capabilities: CAPABILITY_NAMED_IAM
-                TemplatePath: App::devops/services/cloudformation/service-elb.yml
-                RoleArn:
-                  'Fn::ImportValue': !Sub ${ClusterName}${Stage}CloudFormationExecutionRoleArn
-                ParameterOverrides: !Sub |
-                  {
-                    "ClusterName": "${ClusterName}",
-                    "Stage": "${Stage}",
-                    "TypeProject": "${TypeProject}",
-                    "SiteName": "${Host}",
-                    "DefaultAcmCertificateArn": "${DefaultAcmCertificateArn}",
-                    "HasHTTPS": "${HasHTTPS}",
-                    "SiteTgPriority": "${SiteTgPriority}"
-                  }
-              RunOrder: 1
-              InputArtifacts:
-                - Name: App
+            # - Name: CreateELBChangeSet
+            #   ActionTypeId:
+            #     Category: Deploy
+            #     Owner: AWS
+            #     Version: '1'
+            #     Provider: CloudFormation
+            #   Configuration:
+            #     ChangeSetName: Deploy
+            #     ActionMode: CHANGE_SET_REPLACE
+            #     StackName: !Sub ${ClusterName}-${Stage}-service-elb
+            #     Capabilities: CAPABILITY_NAMED_IAM
+            #     TemplatePath: App::devops/services/cloudformation/service-elb.yml
+            #     RoleArn: !GetAtt CloudFormationExecutionRole.Arn
+            #     ParameterOverrides: !Sub |
+            #       {
+            #         "ClusterName": "${ClusterName}",
+            #         "Stage": "${Stage}",
+            #         # "SiteName": "${Host}",
+            #         "DefaultAcmCertificateArn": "${DefaultAcmCertificateArn}",
+            #         "HasHTTPS": "${HasHTTPS}",
+            #         "SiteTgPriority": "${SiteTgPriority}"
+            #       }
+            #   RunOrder: 1
+            #   InputArtifacts:
+            #     - Name: App
 
-            - Name: ExecuteELBChangeSet
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Version: '1'
-                Provider: CloudFormation
-              Configuration:
-                ChangeSetName: Deploy
-                ActionMode: CHANGE_SET_EXECUTE
-                StackName: !Sub ${ClusterName}-${Stage}-${TypeProject}-service-elb
-                RoleArn:
-                  'Fn::ImportValue': !Sub ${ClusterName}${Stage}CloudFormationExecutionRoleArn
-              RunOrder: 2
+            # - Name: ExecuteELBChangeSet
+            #   ActionTypeId:
+            #     Category: Deploy
+            #     Owner: AWS
+            #     Version: '1'
+            #     Provider: CloudFormation
+            #   Configuration:
+            #     ChangeSetName: Deploy
+            #     ActionMode: CHANGE_SET_EXECUTE
+            #     StackName: !Sub ${ClusterName}-${Stage}-service-elb
+            #     RoleArn: !GetAtt CloudFormationExecutionRole.Arn
+            #   RunOrder: 2
 
             - Name: CreateECSChangeSet
               ActionTypeId:
@@ -361,16 +405,14 @@ Resources:
               Configuration:
                 ChangeSetName: Deploy
                 ActionMode: CHANGE_SET_REPLACE
-                StackName: !Sub ${ClusterName}-${Stage}-${TypeProject}-service-ecs
+                StackName: !Sub ${ClusterName}-${Stage}-service-ecs
                 Capabilities: CAPABILITY_NAMED_IAM
                 TemplatePath: App::devops/services/cloudformation/service-ecs.yml
-                RoleArn:
-                  'Fn::ImportValue': !Sub ${ClusterName}${Stage}CloudFormationExecutionRoleArn
+                RoleArn: !GetAtt CloudFormationExecutionRole.Arn
                 ParameterOverrides: !Sub |
                   {
                     "ClusterName": "${ClusterName}",
                     "Stage": "${Stage}",
-                    "TypeProject": "${TypeProject}",
                     "ContainerPort": "${Port}",
                     "ContainerVirtualCPUs": "${ContainerVirtualCPUs}",
                     "ContainerMemoryMin": "${ContainerMemoryMin}",
@@ -393,9 +435,8 @@ Resources:
               Configuration:
                 ChangeSetName: Deploy
                 ActionMode: CHANGE_SET_EXECUTE
-                StackName: !Sub ${ClusterName}-${Stage}-${TypeProject}-service-ecs
-                RoleArn:
-                  'Fn::ImportValue': !Sub ${ClusterName}${Stage}CloudFormationExecutionRoleArn
+                StackName: !Sub ${ClusterName}-${Stage}-service-ecs
+                RoleArn: !GetAtt CloudFormationExecutionRole.Arn
               RunOrder: 4
 
   # CodepipelineNotification:
@@ -412,8 +453,8 @@ Resources:
   #       - codepipeline-pipeline-stage-execution-resumed
   #       - codepipeline-pipeline-stage-execution-canceled
   #       - codepipeline-pipeline-stage-execution-failed
-  #     Name: !Sub ${ClusterName}-${Stage}-${TypeProject}
-  #     Resource: !Sub "arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${ClusterName}-${Stage}-${TypeProject}-service"
+  #     Name: !Sub ${ClusterName}-${Stage}
+  #     Resource: !Sub "arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${ClusterName}-${Stage}-service"
   #     Targets: 
   #       - TargetType: AWSChatbotSlack
   #         TargetAddress: !ImportValue Chatbot-deploys-notificationsArn
@@ -425,4 +466,4 @@ Outputs:
   CodePipeline:
     Value: !Ref Pipeline
     Export:
-      Name: !Sub ${ClusterName}-${Stage}-${TypeProject}-CodePipeline
+      Name: !Sub ${ClusterName}-${Stage}-CodePipeline
