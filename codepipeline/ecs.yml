@@ -7,9 +7,6 @@ Parameters:
   Stage:
     Type: String
 
-  TypeProject:
-    Type: String
-
   ContainerPort:
     Type: Number
 
@@ -81,10 +78,9 @@ Resources:
         MinimumHealthyPercent: !If [hasOnlyOneTask, 100, 50]
         MaximumPercent: !If [hasOnlyOneTask, 200, 100]
       LoadBalancers:
-        - ContainerName: !Sub Application__${ClusterName}_${Stage}_${TypeProject}
+        - ContainerName: !Sub Application__${ClusterName}_${Stage}
           ContainerPort: !Ref ContainerPort
-          TargetGroupArn:
-            'Fn::ImportValue': !Sub ${ClusterName}-${Stage}-${TypeProject}-tg
+          TargetGroupArn: arn:aws:elasticloadbalancing:us-west-2:730335655271:targetgroup/tf-20240516173424468000000002/cce8744c79338b57
       HealthCheckGracePeriodSeconds: !Ref AlbHealthCheckStartPeriod
       PlacementConstraints:
         - Type: memberOf
@@ -147,8 +143,8 @@ Resources:
       Family: !Sub ${ClusterName}
       NetworkMode: !Ref ContainerNetworkMode
       ContainerDefinitions:
-        - Name: !Sub Application__${ClusterName}_${Stage}_${TypeProject}
-          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ClusterName}-${Stage}-${TypeProject}:${BuildNumber}
+        - Name: !Sub Application__${ClusterName}_${Stage}
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ClusterName}-${Stage}:${BuildNumber}
           PortMappings:
             - HostPort: 0
               ContainerPort: !Ref ContainerPort
@@ -168,7 +164,7 @@ Resources:
               awslogs-region: !Ref AWS::Region
           # Environment:
           #   - Name: FE_URL
-          #     Value: !Sub "{{resolve:ssm:/${ClusterName}/${Stage}/${TypeProject}/FE_URL:1}}"
+          #     Value: !Sub "{{resolve:ssm:/${ClusterName}/${Stage}/FE_URL:1}}"
 
           ReadonlyRootFilesystem: true
 
@@ -176,14 +172,14 @@ Outputs:
   ScalingPolicyUp:
     Value: !Ref ScalingPolicyUp
     Export:
-      Name: !Sub ${ClusterName}-${Stage}-${TypeProject}ScalingPolicyUp
+      Name: !Sub ${ClusterName}-${Stage}ScalingPolicyUp
 
   ScalingPolicyDown:
     Value: !Ref ScalingPolicyDown
     Export:
-      Name: !Sub ${ClusterName}-${Stage}-${TypeProject}ScalingPolicyDown
+      Name: !Sub ${ClusterName}-${Stage}ScalingPolicyDown
 
   serviceECSService:
     Value: !GetAtt serviceECSService.Name
     Export:
-      Name: !Sub ${ClusterName}-${Stage}-${TypeProject}serviceECSService
+      Name: !Sub ${ClusterName}-${Stage}serviceECSService

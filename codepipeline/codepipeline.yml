@@ -29,11 +29,11 @@ Parameters:
 ######## Cluster parameters ########
   ClusterName:
     Type: String
-    Default: demo-meetup
+    Default: meetup-demo
   
   ECRRepository:
     Type: String
-    Default: demo-meetup
+    Default: meetup-demo
 
 ######## elb parameters ########
   # DefaultAcmCertificateArn:
@@ -111,7 +111,7 @@ Parameters:
   
   EcsTasksNumber:
     Type: String
-    Default: 1
+    Default: 2
   
   DefaultAcmCertificateArn:
     Type: String
@@ -284,7 +284,7 @@ Resources:
           phases:
             install:
               commands:
-                - n install 20
+                - n install 16
                 - node --version
                 - echo Logging in to Amazon ECR... #
                 - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $REPOSITORY_URI
@@ -317,7 +317,7 @@ Resources:
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
-      Name: !Sub ${ClusterName}-${Stage}--service
+      Name: !Sub ${ClusterName}-${Stage}-service
       RoleArn: !GetAtt CodePipelineServiceRole.Arn
       ArtifactStore:
         Type: S3
@@ -407,7 +407,7 @@ Resources:
                 ActionMode: CHANGE_SET_REPLACE
                 StackName: !Sub ${ClusterName}-${Stage}-service-ecs
                 Capabilities: CAPABILITY_NAMED_IAM
-                TemplatePath: App::devops/services/cloudformation/service-ecs.yml
+                TemplatePath: App::codepipeline/ecs.yml
                 RoleArn: !GetAtt CloudFormationExecutionRole.Arn
                 ParameterOverrides: !Sub |
                   {
