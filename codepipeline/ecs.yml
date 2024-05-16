@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Sets Up Service Api
+Parameters:
+  ClusterName:
+    Type: String
+
+  Stage:
+    Type: String
+
+  ContainerPort:
+    Type: Number
+
+  ContainerVirtualCPUs:
+    Type: Number
+
+  ContainerMemoryMin:
+    Type: Number
+
+  ContainerMemoryMax:
+    Type: String
+
+  AlbHealthCheckStartPeriod:
+    Type: String
+
+  ContainerNetworkMode:
+    Type: String
+    Default: bridge
+
+  BuildNumber:
+    Type: String
+    Default: latest
+
+  EcsTasksNumber:
+    Type: String
+    Default: 1
+
+  ScalableTargetMax:
+    Description: Max of Scalable Tasks
+    Type: Number
+    Default: 4
+
+  CapacityProviderBase:
+    Type: String
+    Default: 0
+
+  CapacityProviderWeight:
+    Type: String
+    Default: 1
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Capacity Resources
+      Parameters:
+        - CapacityProviderBase
+        - CapacityProviderWeight
+
+Conditions:
+  containerHasMemoryLimit: !Not [!Equals [!Ref ContainerMemoryMax, "LIMITLESS"]]
+  hasOnlyOneTask: !Equals [!Ref EcsTasksNumber, "1"]
+
+Resources:
+  serviceECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: arn:aws:ecs:us-west-2:730335655271:cluster/meetup-demo
+      TaskDefinition: !Ref servicetaskdefinition
+      DesiredCount: !Ref EcsTasksNumber
+
+      LoadBalancers:
+        - ContainerName: !Sub Application__${ClusterName}_${Stage}
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: arn:aws:elasticloadbalancing:us-west-2:730335655271:targetgroup/tf-20240516173424468000000002/cce8744c79338b57
+      HealthCheckGracePeriodSeconds: !Ref AlbHealthCheckStartPeriod
+
+  servicetaskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${ClusterName}
+      NetworkMode: !Ref ContainerNetworkMode
+      ContainerDefinitions:
+        - Name: !Sub Application__${ClusterName}_${Stage}
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/meetup-demo:${BuildNumber}
+          PortMappings:
+            - HostPort: 0
+              ContainerPort: !Ref ContainerPort
+          Essential: true
+          MemoryReservation: !Ref ContainerMemoryMin
+          Memory: !If [containerHasMemoryLimit, !Ref ContainerMemoryMax, !Ref 'AWS::NoValue']
+          Cpu: !Ref ContainerVirtualCPUs
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub /ecs-cluster/${ClusterName}-${Stage}
+              awslogs-stream-prefix: /ecs-task-output
+              awslogs-region: !Ref AWS::Region
+          # Environment:
+          #   - Name: FE_URL
+          #     Value: !Sub "{{resolve:ssm:/${ClusterName}/${Stage}/FE_URL:1}}"
+
+          ReadonlyRootFilesystem: true
+
+Outputs:
+
+  serviceECSService:
+    Value: !GetAtt serviceECSService.Name
+    Export:
+      Name: !Sub ${ClusterName}-${Stage}serviceECSService
