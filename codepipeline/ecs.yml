@@ -122,15 +122,6 @@ Resources:
           ReadonlyRootFilesystem: true
 
 Outputs:
-  ScalingPolicyUp:
-    Value: !Ref ScalingPolicyUp
-    Export:
-      Name: !Sub ${ClusterName}-${Stage}ScalingPolicyUp
-
-  ScalingPolicyDown:
-    Value: !Ref ScalingPolicyDown
-    Export:
-      Name: !Sub ${ClusterName}-${Stage}ScalingPolicyDown
 
   serviceECSService:
     Value: !GetAtt serviceECSService.Name
