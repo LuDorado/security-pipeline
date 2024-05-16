@@ -85,10 +85,6 @@ Resources:
           PortMappings:
             - HostPort: 0
               ContainerPort: !Ref ContainerPort
-          Command:
-            - sh
-            - -c
-            - "npm start"
           Essential: true
           MemoryReservation: !Ref ContainerMemoryMin
           Memory: !If [containerHasMemoryLimit, !Ref ContainerMemoryMax, !Ref 'AWS::NoValue']

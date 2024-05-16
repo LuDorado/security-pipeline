@@ -74,6 +74,7 @@ Parameters:
   SonarQubeURLName:
     Description: SonarQube SAST tool URL
     Type: String
+    Default: https://sonarcloud.io
 
   LambdaPackageLoc:
     Description: S3 loc of lambda package
